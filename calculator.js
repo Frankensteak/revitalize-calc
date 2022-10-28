@@ -16,26 +16,69 @@ function calculate(apiKey, logId){
 			var charactersById = charactersByIDMap(characters);
 			var restos = filterCharacters(characters, {"type":"Druid", "role":"healer"})
 			var revitProcPromises = [];
-			return getRevitProcs(apiKey, logId, times, fightsById, restos, characters).then(revitProcs => {
-				var result = process(revitProcs);
+			return getRevitProcs(apiKey, logId, times).then(revitProcResults => {
+				var result = process(revitProcResults, restos, charactersById, fightsById)
 				CACHE[logId] = result;
 				return result;
 			})
-			for(var character of restos){
-				var revitProcPromise = getRevitProcs(apiKey, logId, times, fightsById, character);
-				revitProcPromises.push(revitProcPromise);
-			}
-			return Promise.all(revitProcPromises).then(revitProcResults => {
-				var result = clean(revitProcResults, charactersById)
-				CACHE[logId] = result;
-				return result;
-			});
 		});
 	});
 }
+/*
+revitProcResults{
+	energy: {events: array[Event]},
+	mana: {events: array[Event]},
+	rage: {events: array[Event]},
+	runic: {events: array[Event]}
+}
 
-function process(revitProcs){
-	//TODO: PROC$SS EM
+48540(energy) = resourceChangeType 3
+48541(rage) = resourceChangeType 1
+48542(mana) = resourceChangeType 2
+48543(runic) = resourceChangeType 6
+
+Event: {
+  timestamp: 1610033,
+  type: 'resourcechange',
+  sourceID: 4,
+  sourceIsFriendly: true,
+  targetID: 4,
+  targetIsFriendly: true,
+  ability: {
+    name: 'Revitalize',
+    guid: 48540,
+    type: 8,
+    abilityIcon: 'ability_druid_replenish.jpg'
+  },
+  fight: 19,
+  pin: '0',
+  resourceChange: 8,
+  resourceChangeType: 3,
+  otherResourceChange: 0,
+  maxResourceAmount: 100,
+  waste: 0,
+  resourceActor: 1,
+  classResources: [ { amount: 78, max: 100, type: 3 } ],
+  hitPoints: 100,
+  maxHitPoints: 100,
+  attackPower: 6106,
+  spellPower: 367,
+  armor: 8680,
+  x: 305467,
+  y: 337794,
+  facing: -276,
+  mapID: 162,
+  itemLevel: 203
+}
+*/
+
+//Per character, build overall, boss, trash, bosses maps, then structure into expected format
+function process(revitProcResults){
+	var result = {}
+	for(var character of restos){
+		result[character.name] = {}
+
+	}
 }
 
 //TODO: Update to revit procs
@@ -76,64 +119,43 @@ function cleanCharacters(characters, charactersById){
     return result;
 }
 	
-function getRevitProcs(apiKey, logId, times, fightsById, restos, characters){
-	//https://classic.warcraftlogs.com/v1/report/events/resources/nrBC71TjLzgAMHxq?api_key=98bcbe95946948df07168857bfce2f29&abilityid=100&end=9999999999
-	//Update api calls
-	return get(apiKey, logId, "events", "buffs", {end: times.endTime, "abilityid": 33763, "sourceid": character.id}).then(buffsJSON => {
-		var result = {name: character.name, 
-					  overall: {total: 0, characters: {}}, 
-					  trash: {total: 0, characters:{}}, 
-					  boss: {total: 0, characters:{}}, 
-					  bosses: []};
-		var buffEventsByFight = buffEventsByFightMap(buffsJSON["events"]);
-		for(var fightID in buffEventsByFight){
-			var fight = fightsById[fightID];
-			var lbThreeTickObj = getLbThreeTickObj(buffEventsByFight[fightID], fight);
-			var tickSeconds = msToSeconds(lbThreeTickObj.total);
-			var uptimeObjByCharacterID = lbThreeTickObj.characters;
-			if(fight.boss != 0){
-				result.boss.total += tickSeconds / msToMinutes(times.bossFightTime);
-				var name = fight.name + `${!fight.kill ? " (wipe)" : ""}`;
-				var fightMs = fight.end_time - fight.start_time;
-				var total = tickSeconds / msToMinutes(fightMs);
-				var bossCharacters = {};
-				for(var id in uptimeObjByCharacterID){
-					if(!result.boss.characters[id]){
-						result.boss.characters[id] = {uptime: 0, drops: 0};
-					}
-					var ms = uptimeObjByCharacterID[id].ms;
-					var drops = uptimeObjByCharacterID[id].drops;
-					result.boss.characters[id].uptime += ms / times.bossFightTime;
-					result.boss.characters[id].drops += drops;
-					bossCharacters[id] = {uptime: ms / fightMs, drops};
-				}
-				result.bosses.push({name, total, characters: bossCharacters});
-			}
-			else{
-				result.trash.total += tickSeconds / msToMinutes(times.trashFightTime);
-				for(var id in uptimeObjByCharacterID){
-					var ms = uptimeObjByCharacterID[id].ms;
-					var drops = uptimeObjByCharacterID[id].drops;
-					if(!result.trash.characters[id]){
-						result.trash.characters[id] = {uptime: 0, drops: 0};
-					}
-					result.trash.characters[id].uptime += ms / times.trashFightTime;
-					result.trash.characters[id].drops += drops;
-				}
-			}
-			result.overall.total += tickSeconds / msToMinutes(times.overallFightTime);
-			for(var id in uptimeObjByCharacterID){
-				var ms = uptimeObjByCharacterID[id].ms;
-				var drops = uptimeObjByCharacterID[id].drops;
-				if(!result.overall.characters[id]){
-					result.overall.characters[id] = {uptime: 0, drops: 0};
-				}
-				result.overall.characters[id].uptime += ms / times.overallFightTime;
-				result.overall.characters[id].drops += drops;
-			}
-		}
+function getRevitProcs(apiKey, logId, times){
+	var promises = []
+	var energyPromise = get(apiKey, logId, "events", "resources", {end: times.endTime, abilityid: 103, filter: "ability.id%3D48540"}).then(response => {
+		var result = {}
+		result.type = "energy";
+		result.data = response;
 		return result;
 	});
+	promises.push(energyPromise);
+	var ragePromise = get(apiKey, logId, "events", "resources", {end: times.endTime, abilityid: 101, filter: "ability.id%3D48541"}).then(response => {
+		var result = {}
+		result.type = "rage";
+		result.data = response;
+		return result;
+	});
+	promises.push(ragePromise);
+	var manaPromise = get(apiKey, logId, "events", "resources", {end: times.endTime, abilityid: 100, filter: "ability.id%3D48542"}).then(response => {
+		var result = {}
+		result.type = "mana";
+		result.data = response;
+		return result;
+	});
+	promises.push(manaPromise);
+	var runicPromise = get(apiKey, logId, "events", "resources", {end: times.endTime, abilityid: 106, filter: "ability.id%3D48543"}).then(response => {
+		var result = {}
+		result.type = "runic";
+		result.data = response;
+		return result;
+	});
+	promises.push(runicPromise);
+	return Promise.all(promises).then(responses => {
+		var result = {};
+		for(var response of responses){
+			result[response.type] = response.data
+		}
+		return result;
+	})
 }
 
 function getLbThreeTickObj(events, fight){
@@ -215,7 +237,18 @@ function get(apiKey, logId, view, metric, properties){
 				} catch(e){
 					reject(e);
 				}
-				resolve(body);
+				if(body.nextPageTimestamp){
+					var innerProperties = JSON.parse(JSON.stringify(properties));
+					innerProperties.start = body.nextPageTimestamp;
+					get(apiKey, logId, view, metric, innerProperties).then(innerResponse => {
+						body.events = body.events.concat(innerResponse.events);
+						body.count += innerResponse.count;
+						resolve(body);
+					})
+				}
+				else{
+					resolve(body);
+				}
 			})
 		}).on('error', e => {
 			reject(e);
