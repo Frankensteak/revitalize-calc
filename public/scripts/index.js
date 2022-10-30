@@ -97,7 +97,7 @@ function generateResults(resultObj){
 
 function generateResultSection(metric, dataObj){
     var resultSectionContainer = $(`<div class="accordion child-accordion result-section-container"></div>`)
-    var header = $(`<h3>${capitalize(metric)}: ${dataObj.total} LB3 ticks/min</h3>`)
+    var header = $(`<h3>${capitalize(metric)}: ${dataObj.ppm} procs per minute</h3>`)
     resultSectionContainer.append(header);
     var characterSection = generateCharacterSection(dataObj.characters);
     resultSectionContainer.append(characterSection);
@@ -109,7 +109,7 @@ function generateCharacterSection(characterList){
     var list = $(`<ul></ul>`);
     for(var character of characterList){
         //TODO: Fix here for character break down
-        var listItem = $(`<li>${character.name}: ${character.uptime.toFixed(2)}% uptime (${character.drops} drop${character.drops>1?"s":""})</li>`)
+        var listItem = $(`<li>${character.name}: ${character.ppm.toFixed(2)} ppm (${character.resources})</li>`)
         list.append(listItem);
     }
     characterSection.append(list);
