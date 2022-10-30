@@ -56,8 +56,8 @@ function process(revitProcs, fightsById, times){
 		else{
 			result.trash.ppm += fightRevitProcs.procs / msToMinutes(times.trashFightTime)
 			for(var id in revitProcByCharacterID){
-				if(!result.overall.characters[id]){
-					result.overall.characters[id] = {ppm: 0, resources: 0};
+				if(!result.trash.characters[id]){
+					result.trash.characters[id] = {ppm: 0, resources: 0};
 				}
 				var ppm = revitProcByCharacterID[id].procs / msToMinutes(times.trashFightTime)
 				var resources = revitProcByCharacterID[id].resourceGain;
@@ -65,8 +65,11 @@ function process(revitProcs, fightsById, times){
 				result.trash.characters[id].resources += resources;
 			}
 		}
-		result.overall.ppm += fightPpm;
+		result.overall.ppm += fightRevitProcs.procs / msToMinutes(times.overallFightTime);
 		for(var id in revitProcByCharacterID){
+			if(!result.overall.characters[id]){
+				result.overall.characters[id] = {ppm: 0, resources: 0};
+			}
 			var ppm = revitProcByCharacterID[id].procs / msToMinutes(times.overallFightTime)
 			var resources = revitProcByCharacterID[id].resourceGain;
 			result.overall.characters[id].ppm += ppm;
@@ -89,22 +92,23 @@ function getRevitProcsForFight(events){
 	return result;
 }
 
-function clean(revitProcResults, charactersById){
-    for(var revitProcResult of revitProcResults){
-        for(var type in revitProcResult){
-            if(type === "bosses"){
-                for(var boss of revitProcResult[type]){
-                    boss.total = trimValue(boss.total);
-                    boss.characters = cleanCharacters(boss.characters, charactersById);
-                }
-            }
-            else{
-                revitProcResult[type].ppm = trimValue(revitProcResult[type].ppm);
-                revitProcResult[type].characters = cleanCharacters(revitProcResult[type].characters, charactersById);
-            }
-        }
-    }
-    return revitProcResults;
+function clean(revitProcResult, charactersById){
+	for(var type in revitProcResult){
+		if(type === "name"){
+			//Do nothing
+		}
+		else if(type === "bosses"){
+			for(var boss of revitProcResult[type]){
+				boss.ppm = trimValue(boss.ppm);
+				boss.characters = cleanCharacters(boss.characters, charactersById);
+			}
+		}
+		else{
+			revitProcResult[type].ppm = trimValue(revitProcResult[type].ppm);
+			revitProcResult[type].characters = cleanCharacters(revitProcResult[type].characters, charactersById);
+		}
+	}
+    return revitProcResult;
 }
 
 function cleanCharacters(characters, charactersById){

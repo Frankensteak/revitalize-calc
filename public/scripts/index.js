@@ -40,14 +40,12 @@ function calculate(){
         })
 }
 
-function successfulFetch(resultObjList){
+function successfulFetch(resultObj){
     var elem = $("#results");
     elem.empty();
-    for(var resultObj of resultObjList){
-        console.log(resultObj);
-        var result = generateResults(resultObj);
-        elem.append(result);
-    }
+    console.log(resultObj);
+    var result = generateResults(resultObj);
+    elem.append(result);
     $(".accordion").accordion({
         collapsible: true,
         heightStyle: "content"
@@ -109,7 +107,7 @@ function generateCharacterSection(characterList){
     var list = $(`<ul></ul>`);
     for(var character of characterList){
         //TODO: Fix here for character break down
-        var listItem = $(`<li>${character.name}: ${character.ppm.toFixed(2)} ppm (${character.resources})</li>`)
+        var listItem = $(`<li>${character.name}: ${character.ppm.toFixed(1)} ppm (${character.resources})</li>`)
         list.append(listItem);
     }
     characterSection.append(list);
