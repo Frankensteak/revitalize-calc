@@ -14,10 +14,9 @@ function calculate(apiKey, logId){
 		return get(apiKey, logId, "tables", "summary", {end: times["endTime"]}).then(summaryJSON => {
 			var characters = summaryJSON["composition"];
 			var charactersById = charactersByIDMap(characters);
-			var restos = filterCharacters(characters, {"type":"Druid", "role":"healer"})
-			var revitProcPromises = [];
 			return getRevitProcs(apiKey, logId, times).then(revitProcResults => {
-				var result = process(revitProcResults, restos, charactersById, fightsById)
+				var processedRevits = process(revitProcResults, resto, charactersById, fightsById);
+				var result = clean(processedRevits);
 				CACHE[logId] = result;
 				return result;
 			})
@@ -25,13 +24,7 @@ function calculate(apiKey, logId){
 	});
 }
 /*
-revitProcResults{
-	energy: {events: array[Event]},
-	mana: {events: array[Event]},
-	rage: {events: array[Event]},
-	runic: {events: array[Event]}
-}
-
+revitProcResults array[Event]
 48540(energy) = resourceChangeType 3
 48541(rage) = resourceChangeType 1
 48542(mana) = resourceChangeType 2
@@ -73,11 +66,27 @@ Event: {
 */
 
 //Per character, build overall, boss, trash, bosses maps, then structure into expected format
-function process(revitProcResults){
-	var result = {}
-	for(var character of restos){
-		result[character.name] = {}
+function process(revitProcResults, resto, charactersById, fightsById){
+	var result = {name: character.name, 
+					overall: {total: 0, characters: {}}, 
+					trash: {total: 0, characters:{}}, 
+					boss: {total: 0, characters:{}}, 
+					bosses: []};
+	var revitProcs = revitProcResults.filter(revitProcResult => revitProcResult.sourceID === resto.id)
+	revitProcs.sort((a,b) => a.timestamp - b.timestamp)
+	var eventsByFight = eventsByFightMap(revitProcs);
+	for(var fightID in eventsByFight){
+		var fight = fightsById[fightID];
+		var fightRevitProcObj = getRevitProcsForFight(eventsByFight[fightID])
+	}
+	return result
+}
 
+function getRevitProcsForFight(events){
+	var result = {total: 0, characters: {}};
+	var procPerCharacterMap = procEventsByTargetIdMap(events);
+	for(var targetId in procPerCharacterMap){
+		
 	}
 }
 
@@ -122,80 +131,28 @@ function cleanCharacters(characters, charactersById){
 function getRevitProcs(apiKey, logId, times){
 	var promises = []
 	var energyPromise = get(apiKey, logId, "events", "resources", {end: times.endTime, abilityid: 103, filter: "ability.id%3D48540"}).then(response => {
-		var result = {}
-		result.type = "energy";
-		result.data = response;
-		return result;
+		return response.events;
 	});
 	promises.push(energyPromise);
 	var ragePromise = get(apiKey, logId, "events", "resources", {end: times.endTime, abilityid: 101, filter: "ability.id%3D48541"}).then(response => {
-		var result = {}
-		result.type = "rage";
-		result.data = response;
-		return result;
+		return response.events;
 	});
 	promises.push(ragePromise);
 	var manaPromise = get(apiKey, logId, "events", "resources", {end: times.endTime, abilityid: 100, filter: "ability.id%3D48542"}).then(response => {
-		var result = {}
-		result.type = "mana";
-		result.data = response;
-		return result;
+		return response.events;
 	});
 	promises.push(manaPromise);
 	var runicPromise = get(apiKey, logId, "events", "resources", {end: times.endTime, abilityid: 106, filter: "ability.id%3D48543"}).then(response => {
-		var result = {}
-		result.type = "runic";
-		result.data = response;
-		return result;
+		return response.events;
 	});
 	promises.push(runicPromise);
 	return Promise.all(promises).then(responses => {
-		var result = {};
+		var result = [];
 		for(var response of responses){
-			result[response.type] = response.data
+			result = result.concat(response)
 		}
 		return result;
 	})
-}
-
-function getLbThreeTickObj(events, fight){
-	var result = {total: 0, characters: {}};
-	var lbEventsMap = lbEventsByTargetIDMap(events);
-	var totalMs = 0;
-	for(var targetID in lbEventsMap){
-		var threeTickObj = getLbThreeTickObjPerTarget(lbEventsMap[targetID], fight);
-		result.characters[targetID] = threeTickObj;
-		result.total += threeTickObj.ms;
-	}
-	return result;
-}
-
-function getLbThreeTickObjPerTarget(targetEvents, fight){
-	var drops = 0;
-	var ms = 0;
-	var rolling = false;
-	var start = fight.start_time;
-	targetEvents.forEach((event, idx) => {
-		var type = event["type"]
-		var timestamp = event["timestamp"];
-		var stack = event["stack"] || 0;
-		if(type === "refreshbuff" && idx === 0){
-			rolling = true;
-		}
-		else if(type === "applybuffstack" && stack === 3){
-			rolling = true;
-			start = timestamp;
-		}
-		else if(type === "removebuff" && rolling){
-			drops++;
-			rolling = false;
-			ms += timestamp - start;
-		}
-	});
-	if(rolling){
-		ms += fight.end_time - start;
-	}
-	return {ms, drops};
 }
 
 function getTimes(fights){
@@ -224,7 +181,6 @@ function get(apiKey, logId, view, metric, properties){
 	var viewPath = view ? `${view}/` : "";
 	var metricPath = metric ? `${metric}/` : "";
 	var url = 'https://classic.warcraftlogs.com/v1/report/' + viewPath + metricPath + logId + query;
-	//console.log("API Call to " + url);
 	return new Promise((resolve,reject) => {
 		https.get(url, res => {
 			var body = [];
@@ -295,8 +251,8 @@ function lbEventsByTargetIDMap(events){
 	}, {});
 }
 
-function buffEventsByFightMap(buffEvents){
-	return buffEvents.reduce((map, event) => {
+function eventsByFightMap(events){
+	return events.reduce((map, event) => {
 		if(!map[event.fight]){
 			map[event.fight] = []
 		}
