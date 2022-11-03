@@ -26,68 +26,140 @@ function calculate(apiKey, logId){
 
 function process(revitProcs, fightsById, times){
 	var result = {name: "All Druids", 
-					overall: {ppm: 0, characters: {}}, 
-					trash: {ppm: 0, characters:{}}, 
-					boss: {ppm: 0, characters:{}}, 
+					overall: {ppm: 0, procs: 0, resources: {}, characters: {}}, 
+					trash: {ppm: 0, procs: 0, resources: {}, characters: {}}, 
+					boss: {ppm: 0, procs: 0, resources: {}, characters: {}}, 
 					bosses: []};
 	revitProcs.sort((a,b) => a.timestamp - b.timestamp)
 	var eventsByFight = eventsByFightMap(revitProcs);
+	console.log(JSON.stringify(times));
 	for(var fightID in eventsByFight){
 		var fight = fightsById[fightID];
 		var fightRevitProcs = getRevitProcsForFight(eventsByFight[fightID])
 		var revitProcByCharacterID = fightRevitProcs.characters;
 		if(fight.boss != 0){
-			result.boss.ppm += fightRevitProcs.procs / msToMinutes(times.bossFightTime)
+			var fightProcs = fightRevitProcs.procs
+			var fightPpm = fightProcs / msToMinutes(times.bossFightTime)
+			var fightResources = fightRevitProcs.resources
+			result.boss.procs += fightProcs
+			result.boss.ppm += fightPpm
+			result.boss.resources = addResources(result.boss.resources, fightResources);
 			var name = fight.name + `${!fight.kill ? " (wipe)" : ""}`;
 			var fightMs = fight.end_time - fight.start_time;
 			var bossCharacters = {};
 			for(var id in revitProcByCharacterID){
 				if(!result.boss.characters[id]){
-					result.boss.characters[id] = {ppm: 0, resources: 0};
+					result.boss.characters[id] = {procs: 0, ppm: 0, resources: {}};
 				}
-				var ppm = revitProcByCharacterID[id].procs / msToMinutes(fightMs)
-				var resources = revitProcByCharacterID[id].resourceGain;
+				var procs = revitProcByCharacterID[id].procs
+				var ppm = procs / msToMinutes(fightMs)
+				var resources = revitProcByCharacterID[id].resources;
+				addTimingToResources(resources, msToSeconds(fightMs))
+				result.boss.characters[id].procs += procs;
 				result.boss.characters[id].ppm += ppm;
-				result.boss.characters[id].resources += resources;
-				bossCharacters[id] = {ppm, resources}
+				result.boss.characters[id].resources = addResources(result.boss.characters[id].resources, resources);
+				bossCharacters[id] = {ppm, procs, resources}
 			}
-			result.bosses.push({name, ppm, characters: bossCharacters})
+			result.bosses.push({name, procs: fightProcs, ppm: fightProcs / msToMinutes(fightMs), resources: fightResources, characters: bossCharacters})
 		}
 		else{
+			result.trash.procs += fightRevitProcs.procs
 			result.trash.ppm += fightRevitProcs.procs / msToMinutes(times.trashFightTime)
+			result.trash.resources = addResources(result.trash.resources, fightRevitProcs.resources);
+			var fightResources = fightRevitProcs.resources
 			for(var id in revitProcByCharacterID){
 				if(!result.trash.characters[id]){
-					result.trash.characters[id] = {ppm: 0, resources: 0};
+					result.trash.characters[id] = {procs: 0, ppm: 0, resources: {}};
 				}
-				var ppm = revitProcByCharacterID[id].procs / msToMinutes(times.trashFightTime)
-				var resources = revitProcByCharacterID[id].resourceGain;
+				var procs = revitProcByCharacterID[id].procs
+				var ppm = procs / msToMinutes(times.trashFightTime)
+				var resources = revitProcByCharacterID[id].resources;
+				addTimingToResources(resources, msToSeconds(fightMs))
+				result.trash.characters[id].procs += procs;
 				result.trash.characters[id].ppm += ppm;
-				result.trash.characters[id].resources += resources;
+				result.trash.characters[id].resources = addResources(result.trash.characters[id].resources, resources);
 			}
 		}
+		result.overall.procs += fightRevitProcs.procs
 		result.overall.ppm += fightRevitProcs.procs / msToMinutes(times.overallFightTime);
+		result.overall.resources = addResources(result.overall.resources, fightRevitProcs.resources);
 		for(var id in revitProcByCharacterID){
 			if(!result.overall.characters[id]){
-				result.overall.characters[id] = {ppm: 0, resources: 0};
+				result.overall.characters[id] = {procs: 0, ppm: 0, resources: {}};
 			}
-			var ppm = revitProcByCharacterID[id].procs / msToMinutes(times.overallFightTime)
-			var resources = revitProcByCharacterID[id].resourceGain;
+			var procs = revitProcByCharacterID[id].procs
+			var ppm = procs / msToMinutes(times.overallFightTime)
+			var resources = revitProcByCharacterID[id].resources;
+			addTimingToResources(resources, msToSeconds(fightMs))
+			result.overall.characters[id].procs += procs;
 			result.overall.characters[id].ppm += ppm;
-			result.overall.characters[id].resources += resources;
+			result.overall.characters[id].resources = addResources(result.overall.characters[id].resources, resources);
 		}
 	}
 	return result
 }
 
+function addTimingToResources(resources, seconds){
+	for(var resource in resources){
+		switch(resource){
+			case "mana":
+				resources["mp5"] = Math.round((resources[resource] / (seconds * 5)) * 10) / 10
+				break;
+			case "energy":
+				resources["eps"] = Math.round((resources[resource] / seconds) * 10) / 10
+				break;
+			case "rage":
+				resources["rps"] = Math.round((resources[resource] / seconds) * 10) / 10
+				break;
+			case "runic power":
+				resources["rpps"] = Math.round((resources[resource] / seconds) * 10) / 10
+				break;
+		}
+	}
+}
+
+function addResources(source, newResources){
+	for(var resource in newResources){
+		if(!source[resource]){
+			source[resource] = 0
+		}
+		source[resource] += newResources[resource];
+	}
+	return source;
+}
+
 function getRevitProcsForFight(events){
-	var result = {procs: events.length, characters: {}};
+	var result = {procs: events.length, resources: {}, characters: {}};
 	var procPerCharacterMap = procEventsByTargetIDMap(events);
 	for(var targetID in procPerCharacterMap){
 		var targetProcs = procPerCharacterMap[targetID]
-		var resourceGain = targetProcs.reduce((total,event) => {
-				return total + event.resourceChange
-			}, 0)
-		result.characters[targetID] = {procs: targetProcs.length, resourceGain}
+		var resources = {};
+		for(var proc of targetProcs){
+			var resourceType = "undefined";
+			switch(proc.resourceChangeType){
+				case 0:
+					resourceType = "mana";
+					break;
+				case 1:
+					resourceType = "rage";
+					break;
+				case 3:
+					resourceType = "energy";
+					break;
+				case 6:
+					resourceType = "runic power";
+					break;
+			}
+			if(!resources[resourceType]){
+				resources[resourceType] = 0
+			}
+			resources[resourceType] += proc.resourceChange
+			if(!result.resources[resourceType]){
+				result.resources[resourceType] = 0
+			}
+			result.resources[resourceType] += proc.resourceChange
+		}
+		result.characters[targetID] = {procs: targetProcs.length, resources}
 	}
 	return result;
 }
@@ -100,11 +172,15 @@ function clean(revitProcResult, charactersById){
 		else if(type === "bosses"){
 			for(var boss of revitProcResult[type]){
 				boss.ppm = trimValue(boss.ppm);
+				boss.procs = boss.procs.toLocaleString()
+				boss.resources = cleanResources(boss.resources);
 				boss.characters = cleanCharacters(boss.characters, charactersById);
 			}
 		}
 		else{
 			revitProcResult[type].ppm = trimValue(revitProcResult[type].ppm);
+			revitProcResult[type].procs = revitProcResult[type].procs.toLocaleString();
+			revitProcResult[type].resources = cleanResources(revitProcResult[type].resources);
 			revitProcResult[type].characters = cleanCharacters(revitProcResult[type].characters, charactersById);
 		}
 	}
@@ -115,39 +191,29 @@ function cleanCharacters(characters, charactersById){
     var result = [];
     for(var id in characters){
         var character = charactersById[id];
+		var name = "";
 		if(!character){
-			continue;
+			name = `Unknown Pet (ID: ${id})`;
 		}
-        var name = `${character.name} (${character.type})`;
+		else{
+			var name = `${character.name} (${character.type})`;
+		}
         var charObj = characters[id];
+		var procs = charObj.procs
         var ppm = trimValue(charObj.ppm);
-		var resources = `${charObj.resources} ${resourceType(character.type)}`
-		result.push({name, ppm, resources});
+		var resources = cleanResources(charObj.resources)
+		result.push({name, procs, ppm, resources});
     }
     result.sort((a,b) => b.ppm - a.ppm);
     return result;
 }
 
-function resourceType(type){
-	var result = "";
-	switch(type){
-		case "DeathKnight":
-			result = "runic power";
-			break;
-		case "Druid":
-			result = "mixed resources (not split for druids yet)"
-			break;
-		case "Rogue":
-			result = "energy";
-			break;
-		case "Warrior":
-			result = "rage";
-			break;
-		default:
-			result = "mana";
-			break;
+function cleanResources(resources){
+	var resourceArray = []
+	for(var resource in resources){
+		resourceArray.push(`${resources[resource].toLocaleString()} ${resource}`)
 	}
-	return result;
+	return resourceArray.join(', ');
 }
 	
 function getRevitProcs(apiKey, logId, times){
@@ -287,3 +353,79 @@ function trimValue(value){
 module.exports = {
     calculate
 }
+
+/*
+-revitProcResults array[Event]
+-48540(energy) = resourceChangeType 3
+-48541(rage) = resourceChangeType 1
+-48542(mana) = resourceChangeType 0
+-48543(runic) = resourceChangeType 6
+
+-Event: {
+-  timestamp: 1610033,
+-  type: 'resourcechange',
+-  sourceID: 4,
+-  sourceIsFriendly: true,
+-  targetID: 4,
+-  targetIsFriendly: true,
+-  ability: {
+-    name: 'Revitalize',
+-    guid: 48540,
+-    type: 8,
+-    abilityIcon: 'ability_druid_replenish.jpg'
+-  },
+-  fight: 19,
+-  pin: '0',
+-  resourceChange: 8,
+-  resourceChangeType: 3,
+-  otherResourceChange: 0,
+-  maxResourceAmount: 100,
+-  waste: 0,
+-  resourceActor: 1,
+-  classResources: [ { amount: 78, max: 100, type: 3 } ],
+-  hitPoints: 100,
+-  maxHitPoints: 100,
+-  attackPower: 6106,
+        });
+ }
+-/*
+-revitProcResults array[Event]
+-48540(energy) = resourceChangeType 3
+-48541(rage) = resourceChangeType 1
+-48542(mana) = resourceChangeType 2
+-48543(runic) = resourceChangeType 6
+
+-Event: {
+-  timestamp: 1610033,
+-  type: 'resourcechange',
+-  sourceID: 4,
+-  sourceIsFriendly: true,
+-  targetID: 4,
+-  targetIsFriendly: true,
+-  ability: {
+-    name: 'Revitalize',
+-    guid: 48540,
+-    type: 8,
+-    abilityIcon: 'ability_druid_replenish.jpg'
+-  },
+-  fight: 19,
+-  pin: '0',
+-  resourceChange: 8,
+-  resourceChangeType: 3,
+-  otherResourceChange: 0,
+-  maxResourceAmount: 100,
+-  waste: 0,
+-  resourceActor: 1,
+-  classResources: [ { amount: 78, max: 100, type: 3 } ],
+-  hitPoints: 100,
+-  maxHitPoints: 100,
+-  attackPower: 6106,
+-  spellPower: 367,
+-  armor: 8680,
+-  x: 305467,
+-  y: 337794,
+-  facing: -276,
+-  mapID: 162,
+-  itemLevel: 203
+-}
+-*/
