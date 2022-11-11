@@ -35,6 +35,7 @@ function calculate(){
             }
             else{
                 loader.remove();
+                console.log(JSON.stringify(response))
                 successfulFetch(response);
             }
         })
@@ -95,13 +96,24 @@ function generateResults(resultObj){
 
 function generateResultSection(metric, dataObj){
     var resultSectionContainer = $(`<div class="accordion child-accordion result-section-container"></div>`)
-    var header = $(`<h3>${capitalize(metric)}: ${dataObj.ppm} ppm. ${dataObj.procs} total procs. ${dataObj.resources}</h3>`)
+    var ppm = (dataObj.procs / msToMinutes(dataObj.duration)).toFixed(1);
+    var resourcesString = getResourcesString(dataObj.resources);
+    var timedResources = getTimedResources(dataObj.resources, dataObj.duration);
+    var timedResourcesString = getTimedResourcesString(timedResources);
+    var header = $(`<h3 class="section-header">
+                        <div class="header-content">
+                            <div>${capitalize(metric)}:</div>
+                            <div>${dataObj.procs.toLocaleString()} total procs. ${ppm} ppm.</div>
+                            <div>${resourcesString}</div>
+                            <div>${timedResourcesString}</div>
+                        </div>
+                    </h3>`)
     resultSectionContainer.append(header);
-    var characterSection = generateCharacterSection(dataObj.characters);
+    var characterSection = generateCharacterSection(dataObj.characters, dataObj.duration);
     resultSectionContainer.append(characterSection);
     return resultSectionContainer;
 }
-
+/*
 function generateCharacterSection(characterList){
     var characterSection = $(`<div class="character-section"></div>`)
     var list = $(`<ul></ul>`);
@@ -113,9 +125,147 @@ function generateCharacterSection(characterList){
     characterSection.append(list);
     return characterSection;
 }
+*/
+function generateCharacterSection(characterList, duration){
+    var characterSection = $(`<div class="character-section"></div>`)
+    var table = $(`<table class="character-table"/>`);
+    for(var character of characterList){
+        var ppm = character.procs / msToMinutes(duration);
+        if(ppm < 1){
+            ppm = ppm.toPrecision(1)
+        }
+        else{
+            ppm = Math.round(ppm*10)/10
+        }
+        var resourcesArray = getResourcesArray(character.resources);
+        var timedResourcesArray = getTimedResourcesArray(getTimedResources(character.resources, duration));
+        var row = $(`<tr class="character-row"/>`);
+        row.append(`<td class="character-cell character-name">${character.name}</td>`);
+        row.append(`<td class="character-cell character-procs">${character.procs} proc${character.procs === 1 ? "" : "s"}</td>`);
+        row.append(`<td class="character-cell character-ppm">${ppm} ppm</td>`);
+        var resourcesElem = $(`<td class="character-cell character-resources"/>`);
+        for(var resource of resourcesArray){
+            resourcesElem.append(`<div class="resource-div">${resource}</div>`)
+        }
+        row.append(resourcesElem);
+        var timedResourcesElem = $(`<td class="character-cell character-timed-resources"/>`);
+        for(var resource of timedResourcesArray){
+            timedResourcesElem.append(`<div class="timed-resource-div">${resource}</div>`)
+        }
+        row.append(timedResourcesElem);
+        table.append(row);
+    }
+    characterSection.append(table);
+    return characterSection;
+}
 
 function capitalize(string){
     return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+function getResourcesString(resources){
+    return getResourcesArray(resources).join(", ");
+}
+
+function getResourcesArray(resources){
+    var result = [];
+    var resourceTypes = Object.keys(resources);
+    resourceTypes.sort(resourceSort);
+    for(var resource of resourceTypes){
+        result.push(`${resources[resource].toLocaleString()} ${resource}`);
+    }
+    return result;
+}
+
+function resourceSort(a, b){
+    return resourceTypeOrder(a) - resourceTypeOrder(b);
+}
+
+function getTimedResources(resources, duration){
+    var timedResources = {}
+    for(var resource in resources){
+        var resourceName = ""
+        var timeScale = 1;
+        switch(resource){
+            case "energy":
+                resourceName = "eps";
+                timeScale = msToSeconds(duration);
+                break;
+            case "rage":
+                resourceName = "rps";
+                timeScale = msToSeconds(duration);
+                break;
+            case "runic power":
+                resourceName = "rpps";
+                timeScale = msToSeconds(duration);
+                break;
+            case "mana":
+                resourceName = "mp5";
+                timeScale = msToSeconds(duration) / 5;
+                break;
+        }
+        var calculated = resources[resource] / timeScale;
+        if(calculated < 1){
+            calculated = calculated.toPrecision(1);
+        }
+        else{
+            calculated = Math.round(calculated*10)/10;
+        }
+        timedResources[resourceName] = calculated;
+    }
+    return timedResources;
+}
+
+function getTimedResourcesString(timedResources){
+    return getTimedResourcesArray(timedResources).join(", ");
+}
+
+function getTimedResourcesArray(timedResources){
+    var result = [];
+    var resourceTypes = Object.keys(timedResources);
+    resourceTypes.sort(timedResourceSort);
+    for(var resource of resourceTypes){
+        result.push(`${timedResources[resource].toLocaleString()} ${resource}`);
+    }
+    return result;
+}
+
+function timedResourceSort(a, b){
+    return timedResourceTypeOrder(a) - timedResourceTypeOrder(b);
+}
+
+function resourceTypeOrder(resourceType){
+    switch(resourceType){
+        case "energy":
+            return 0;
+        case "rage":
+            return 1;
+        case "runic power":
+            return 2;
+        case "mana":
+            return 3;
+    }
+}
+
+function timedResourceTypeOrder(timedResourceType){
+    switch(timedResourceType){
+        case "eps":
+            return 0;
+        case "rps":
+            return 1;
+        case "rpps":
+            return 2;
+        case "mp5":
+            return 3;
+    }
+}
+
+function msToMinutes(ms){
+    return msToSeconds(ms) / 60;
+}
+
+function msToSeconds(ms){
+    return ms / 1000;
 }
 
 const TIMEOUTS = [];

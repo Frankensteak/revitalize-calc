@@ -63,6 +63,18 @@
     margin-bottom: auto;
 }
 
+.section-header{
+    display: flex !important;
+}
+
+.character-row:hover{
+    background-color:#ccc;
+}
+
+.character-cell{
+    padding: 5px;
+}
+
 .button-container{
     margin: 10px;
     margin-bottom: 25px;

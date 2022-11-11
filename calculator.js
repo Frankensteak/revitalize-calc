@@ -24,108 +24,31 @@ function calculate(apiKey, logId){
 	});
 }
 
+function intializeProcessingMap(times){
+	return {name: "All Druids", 
+			overall: {duration: times.overallFightTime, procs: 0, resources: {}, characters: {}}, 
+			trash: {duration: times.trashFightTime, procs: 0, resources: {}, characters: {}}, 
+			boss: {duration: times.bossFightTime, procs: 0, resources: {}, characters: {}}, 
+			bosses: []};
+}
+
 function process(revitProcs, fightsById, times){
-	var result = {name: "All Druids", 
-					overall: {ppm: 0, procs: 0, resources: {}, characters: {}}, 
-					trash: {ppm: 0, procs: 0, resources: {}, characters: {}}, 
-					boss: {ppm: 0, procs: 0, resources: {}, characters: {}}, 
-					bosses: []};
+	var result = intializeProcessingMap(times);
 	revitProcs.sort((a,b) => a.timestamp - b.timestamp)
 	var eventsByFight = eventsByFightMap(revitProcs);
-	console.log(JSON.stringify(times));
 	for(var fightID in eventsByFight){
 		var fight = fightsById[fightID];
 		var fightRevitProcs = getRevitProcsForFight(eventsByFight[fightID])
-		var revitProcByCharacterID = fightRevitProcs.characters;
-		if(fight.boss != 0){
-			var fightProcs = fightRevitProcs.procs
-			var fightPpm = fightProcs / msToMinutes(times.bossFightTime)
-			var fightResources = fightRevitProcs.resources
-			result.boss.procs += fightProcs
-			result.boss.ppm += fightPpm
-			result.boss.resources = addResources(result.boss.resources, fightResources);
-			var name = fight.name + `${!fight.kill ? " (wipe)" : ""}`;
-			var fightMs = fight.end_time - fight.start_time;
-			var bossCharacters = {};
-			for(var id in revitProcByCharacterID){
-				if(!result.boss.characters[id]){
-					result.boss.characters[id] = {procs: 0, ppm: 0, resources: {}};
-				}
-				var procs = revitProcByCharacterID[id].procs
-				var ppm = procs / msToMinutes(fightMs)
-				var resources = revitProcByCharacterID[id].resources;
-				addTimingToResources(resources, msToSeconds(fightMs))
-				result.boss.characters[id].procs += procs;
-				result.boss.characters[id].ppm += ppm;
-				result.boss.characters[id].resources = addResources(result.boss.characters[id].resources, resources);
-				bossCharacters[id] = {ppm, procs, resources}
-			}
-			result.bosses.push({name, procs: fightProcs, ppm: fightProcs / msToMinutes(fightMs), resources: fightResources, characters: bossCharacters})
+		if(fight.boss !== 0){
+			addFightToTypeMap(result.boss, fightRevitProcs);
+			addFightToBossesArray(result.bosses, fight, fightRevitProcs)
 		}
 		else{
-			result.trash.procs += fightRevitProcs.procs
-			result.trash.ppm += fightRevitProcs.procs / msToMinutes(times.trashFightTime)
-			result.trash.resources = addResources(result.trash.resources, fightRevitProcs.resources);
-			var fightResources = fightRevitProcs.resources
-			for(var id in revitProcByCharacterID){
-				if(!result.trash.characters[id]){
-					result.trash.characters[id] = {procs: 0, ppm: 0, resources: {}};
-				}
-				var procs = revitProcByCharacterID[id].procs
-				var ppm = procs / msToMinutes(times.trashFightTime)
-				var resources = revitProcByCharacterID[id].resources;
-				addTimingToResources(resources, msToSeconds(fightMs))
-				result.trash.characters[id].procs += procs;
-				result.trash.characters[id].ppm += ppm;
-				result.trash.characters[id].resources = addResources(result.trash.characters[id].resources, resources);
-			}
+			addFightToTypeMap(result.trash, fightRevitProcs);
 		}
-		result.overall.procs += fightRevitProcs.procs
-		result.overall.ppm += fightRevitProcs.procs / msToMinutes(times.overallFightTime);
-		result.overall.resources = addResources(result.overall.resources, fightRevitProcs.resources);
-		for(var id in revitProcByCharacterID){
-			if(!result.overall.characters[id]){
-				result.overall.characters[id] = {procs: 0, ppm: 0, resources: {}};
-			}
-			var procs = revitProcByCharacterID[id].procs
-			var ppm = procs / msToMinutes(times.overallFightTime)
-			var resources = revitProcByCharacterID[id].resources;
-			addTimingToResources(resources, msToSeconds(fightMs))
-			result.overall.characters[id].procs += procs;
-			result.overall.characters[id].ppm += ppm;
-			result.overall.characters[id].resources = addResources(result.overall.characters[id].resources, resources);
-		}
+		addFightToTypeMap(result.overall, fightRevitProcs);
 	}
-	return result
-}
-
-function addTimingToResources(resources, seconds){
-	for(var resource in resources){
-		switch(resource){
-			case "mana":
-				resources["mp5"] = Math.round((resources[resource] / (seconds * 5)) * 10) / 10
-				break;
-			case "energy":
-				resources["eps"] = Math.round((resources[resource] / seconds) * 10) / 10
-				break;
-			case "rage":
-				resources["rps"] = Math.round((resources[resource] / seconds) * 10) / 10
-				break;
-			case "runic power":
-				resources["rpps"] = Math.round((resources[resource] / seconds) * 10) / 10
-				break;
-		}
-	}
-}
-
-function addResources(source, newResources){
-	for(var resource in newResources){
-		if(!source[resource]){
-			source[resource] = 0
-		}
-		source[resource] += newResources[resource];
-	}
-	return source;
+	return result;
 }
 
 function getRevitProcsForFight(events){
@@ -164,6 +87,42 @@ function getRevitProcsForFight(events){
 	return result;
 }
 
+function addFightToTypeMap(map, fightRevitProcs){
+	map.procs += fightRevitProcs.procs;
+	map.resources = mapAdd(map.resources, fightRevitProcs.resources);
+	map.characters = characterMapAdd(map.characters, fightRevitProcs.characters);
+}
+
+function addFightToBossesArray(array, fight, fightRevitProcs){
+	var fightTime = fight.end_time - fight.start_time
+	array.push({name: fight.name + `${!fight.kill ? " (wipe)" : ""}`, 
+						procs: fightRevitProcs.procs, 
+						resources: fightRevitProcs.resources,
+						duration: fightTime,
+						characters: fightRevitProcs.characters})
+}
+
+function mapAdd(map, addition){
+	for(var key in addition){
+		if(!map[key]){
+			map[key] = 0
+		}
+		map[key] += addition[key];
+	}
+	return map;
+}
+
+function characterMapAdd(map, addition){
+	for(var id in addition){
+		if(!map[id]){
+			map[id] = {procs: 0, resources: {}};
+		}
+		map[id].procs += addition[id].procs;
+		map[id].resources = mapAdd(map[id].resources, addition[id].resources);
+	}
+	return map
+}
+
 function clean(revitProcResult, charactersById){
 	for(var type in revitProcResult){
 		if(type === "name"){
@@ -171,16 +130,10 @@ function clean(revitProcResult, charactersById){
 		}
 		else if(type === "bosses"){
 			for(var boss of revitProcResult[type]){
-				boss.ppm = trimValue(boss.ppm);
-				boss.procs = boss.procs.toLocaleString()
-				boss.resources = cleanResources(boss.resources);
 				boss.characters = cleanCharacters(boss.characters, charactersById);
 			}
 		}
 		else{
-			revitProcResult[type].ppm = trimValue(revitProcResult[type].ppm);
-			revitProcResult[type].procs = revitProcResult[type].procs.toLocaleString();
-			revitProcResult[type].resources = cleanResources(revitProcResult[type].resources);
 			revitProcResult[type].characters = cleanCharacters(revitProcResult[type].characters, charactersById);
 		}
 	}
@@ -196,24 +149,15 @@ function cleanCharacters(characters, charactersById){
 			name = `Unknown Pet (ID: ${id})`;
 		}
 		else{
-			var name = `${character.name} (${character.type})`;
+			name = `${character.name} (${character.type})`;
 		}
         var charObj = characters[id];
 		var procs = charObj.procs
-        var ppm = trimValue(charObj.ppm);
-		var resources = cleanResources(charObj.resources)
-		result.push({name, procs, ppm, resources});
+		var resources = charObj.resources;
+		result.push({name, procs, resources});
     }
-    result.sort((a,b) => b.ppm - a.ppm);
+    result.sort((a,b) => b.procs - a.procs);
     return result;
-}
-
-function cleanResources(resources){
-	var resourceArray = []
-	for(var resource in resources){
-		resourceArray.push(`${resources[resource].toLocaleString()} ${resource}`)
-	}
-	return resourceArray.join(', ');
 }
 	
 function getRevitProcs(apiKey, logId, times){
