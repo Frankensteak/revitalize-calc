@@ -1,5 +1,5 @@
 {
-  "name": "lbthree-calc",
+  "name": "revitalize-calc",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -8,15 +8,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ColinDiederich/lbthree-calc.git"
+    "url": "git+https://github.com/Frankensteak/revitalize-calc.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/ColinDiederich/lbthree-calc/issues"
+    "url": "https://github.com/Frankensteak/revitalize-calc/issues"
   },
-  "homepage": "https://github.com/ColinDiederich/lbthree-calc#readme",
+  "homepage": "https://github.com/Frankensteak/revitalize-calc#readme",
   "engines": {
     "node": "14.x"
   },

@@ -22,8 +22,8 @@ express()
     calculate(apiKey, logId).catch(error => {
       console.log(error);
       res.send({error: "An unexpected error has occurred. Please check your inputs or try again later."});
-    }).then(lbThreeObj => {
-      res.send(lbThreeObj);
+    }).then(respObj => {
+      res.send(respObj);
     });
   })
   .listen(PORT, () => console.log(`Listening on ${ PORT }`))
