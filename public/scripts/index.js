@@ -102,7 +102,7 @@ function generateResultSection(metric, dataObj){
     var timedResourcesString = getTimedResourcesString(timedResources);
     var header = $(`<h3 class="section-header">
                         <div class="header-content">
-                            <div>${capitalize(metric)}: ${formatTime(dataObj.duration)}</div>
+                            <div>${capitalize(metric)}: ${formatTime(dataObj.duration)} fight time</div>
                             <div>${dataObj.procs.toLocaleString()} total procs. ${ppm} ppm.</div>
                             <div>${resourcesString}</div>
                             <div>${timedResourcesString}</div>
