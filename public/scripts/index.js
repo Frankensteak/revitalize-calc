@@ -102,7 +102,7 @@ function generateResultSection(metric, dataObj){
     var timedResourcesString = getTimedResourcesString(timedResources);
     var header = $(`<h3 class="section-header">
                         <div class="header-content">
-                            <div>${capitalize(metric)}:</div>
+                            <div>${capitalize(metric)}: ${formatTime(dataObj.duration)}</div>
                             <div>${dataObj.procs.toLocaleString()} total procs. ${ppm} ppm.</div>
                             <div>${resourcesString}</div>
                             <div>${timedResourcesString}</div>
@@ -130,13 +130,7 @@ function generateCharacterSection(characterList, duration){
     var characterSection = $(`<div class="character-section"></div>`)
     var table = $(`<table class="character-table"/>`);
     for(var character of characterList){
-        var ppm = character.procs / msToMinutes(duration);
-        if(ppm < 1){
-            ppm = ppm.toPrecision(1)
-        }
-        else{
-            ppm = Math.round(ppm*10)/10
-        }
+        var ppm = formatDecimal(character.procs / msToMinutes(duration));
         var resourcesArray = getResourcesArray(character.resources);
         var timedResourcesArray = getTimedResourcesArray(getTimedResources(character.resources, duration));
         var row = $(`<tr class="character-row"/>`);
@@ -204,16 +198,41 @@ function getTimedResources(resources, duration){
                 timeScale = msToSeconds(duration) / 5;
                 break;
         }
-        var calculated = resources[resource] / timeScale;
-        if(calculated < 1){
-            calculated = calculated.toPrecision(1);
-        }
-        else{
-            calculated = Math.round(calculated*10)/10;
-        }
-        timedResources[resourceName] = calculated;
+        timedResources[resourceName] = formatDecimal(resources[resource] / timeScale);
     }
     return timedResources;
+}
+
+function formatDecimal(number){
+    if(number < 1){
+        return number.toPrecision(2);
+    }
+    else{
+        return Math.round(number*100)/100;
+    }
+}
+
+function formatTime(ms){
+    var result = [];
+    var time = ms;
+    var hours = msToHours(time);
+    if(hours >= 1){
+        var truncHours = Math.trunc(hours)
+        result.push(`${truncHours} hour${truncHours > 1 ? "s":""}`)
+        time -= truncHours * 60 * 60 * 1000;
+    }
+    var minutes = msToMinutes(time);
+    if(minutes >= 1){
+        var truncMinutes = Math.trunc(minutes)
+        result.push(`${truncMinutes} minute${truncMinutes > 1 ? "s":""}`)
+        time -= truncMinutes * 60 * 1000;
+    }
+    var seconds = msToSeconds(time);
+    if(seconds >= 1){
+        var truncSeconds = Math.trunc(seconds);
+        result.push(`${truncSeconds} second${truncSeconds > 1 ? "s":""}`);
+    }
+    return result.join(" ");
 }
 
 function getTimedResourcesString(timedResources){
@@ -258,6 +277,10 @@ function timedResourceTypeOrder(timedResourceType){
         case "mp5":
             return 3;
     }
+}
+
+function msToHours(ms){
+    return msToMinutes(ms) / 60;
 }
 
 function msToMinutes(ms){
